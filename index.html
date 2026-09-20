@@ -70,6 +70,7 @@
         .score-box.correct .value { color: #27ae60; }
         .score-box.incorrect .value { color: #e74c3c; }
         .score-box.remaining .value { color: #2980b9; }
+        .score-box.timer .value { color: #8e44ad; }
 
         .question-card {
             background: white;
@@ -321,6 +322,54 @@
         }
         .pool-note { font-size: 0.82em; color: #888; margin-top: 10px; }
 
+        /* Results: time taken + best badge */
+        .time-taken { margin-top: 8px; color: #8e44ad; font-size: 0.95em; font-weight: 500; }
+        .best-badge { margin-top: 10px; font-size: 0.95em; font-weight: 600; color: #d35400; min-height: 1em; }
+
+        /* Best-scores panel (localStorage) */
+        .best-scores {
+            margin-top: 28px;
+            text-align: left;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 18px;
+        }
+        .best-scores-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #1a5276;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .clear-scores-btn {
+            padding: 5px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: #fff;
+            color: #e74c3c;
+            font-size: 0.8em;
+            cursor: pointer;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .clear-scores-btn:hover { background: #fadbd8; border-color: #e74c3c; }
+        .best-score-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 0.9em;
+        }
+        .best-score-row .bs-topic { font-weight: 600; color: #333; }
+        .best-score-row .bs-detail { color: #666; }
+        .best-scores-empty { font-size: 0.85em; color: #999; font-style: italic; }
+
         .quiz-screen { display: none; }
         .quiz-screen.show { display: block; }
 
@@ -377,6 +426,14 @@
                 </div>
 
                 <button class="start-btn" onclick="startQuiz()">Start Quiz</button>
+
+                <div class="best-scores" id="bestScores">
+                    <div class="best-scores-header">
+                        <span>Your best scores on this device</span>
+                        <button type="button" class="clear-scores-btn" onclick="clearBestScores()">Clear</button>
+                    </div>
+                    <div id="bestScoresList"></div>
+                </div>
             </div>
         </div>
 
@@ -398,6 +455,10 @@
                 <div class="score-box remaining">
                     <div class="label">Remaining</div>
                     <div class="value" id="remainingCount">150</div>
+                </div>
+                <div class="score-box timer">
+                    <div class="label">Time</div>
+                    <div class="value" id="timerDisplay">0:00</div>
                 </div>
             </div>
 
@@ -430,6 +491,8 @@
                     </div>
                 </div>
                 <div class="passing-info" id="passingInfo">Passing score: 75%</div>
+                <div class="time-taken" id="timeTaken"></div>
+                <div class="best-badge" id="bestBadge"></div>
                 <button class="restart-btn" onclick="restartQuiz()">Take Quiz Again</button>
             </div>
 
@@ -456,6 +519,101 @@
         let selectedTopic = 'all';
         let selectedLength = 25;
         let reviewFilter = 'all';
+
+        // Timer state
+        let timerInterval = null;
+        let quizStartTime = 0;
+        let elapsedSeconds = 0;
+
+        // localStorage key for best scores on this device
+        const STORAGE_KEY = 'nclexQuizBestScores_v1';
+
+        // Format seconds as M:SS
+        function formatTime(totalSeconds) {
+            const m = Math.floor(totalSeconds / 60);
+            const s = totalSeconds % 60;
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function startTimer() {
+            quizStartTime = Date.now();
+            elapsedSeconds = 0;
+            document.getElementById('timerDisplay').textContent = '0:00';
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                elapsedSeconds = Math.floor((Date.now() - quizStartTime) / 1000);
+                document.getElementById('timerDisplay').textContent = formatTime(elapsedSeconds);
+            }, 1000);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            elapsedSeconds = Math.floor((Date.now() - quizStartTime) / 1000);
+            return elapsedSeconds;
+        }
+
+        // ---- Local best-score persistence (per topic) ----
+        function loadBestScores() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function saveBestScores(scores) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+            } catch (e) {
+                // localStorage may be unavailable (private mode); fail silently
+            }
+        }
+
+        // Record a result; returns true if this attempt set a new best for the topic
+        function recordScore(topicKey, percentage, seconds, total) {
+            const scores = loadBestScores();
+            const prev = scores[topicKey];
+            let isNewBest = false;
+            // Best = highest percentage; tie-break on faster time
+            if (!prev || percentage > prev.percentage ||
+                (percentage === prev.percentage && seconds < prev.seconds)) {
+                scores[topicKey] = {
+                    percentage: percentage,
+                    seconds: seconds,
+                    total: total,
+                    date: new Date().toISOString().slice(0, 10)
+                };
+                saveBestScores(scores);
+                isNewBest = true;
+            }
+            return isNewBest;
+        }
+
+        function renderBestScores() {
+            const scores = loadBestScores();
+            const listEl = document.getElementById('bestScoresList');
+            const order = ['All topics', 'Human Development', 'Mobility', 'Thermoregulation'];
+            const keys = Object.keys(scores).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+            if (keys.length === 0) {
+                listEl.innerHTML = '<div class="best-scores-empty">No attempts saved yet. Finish a quiz to record your best score.</div>';
+                return;
+            }
+            listEl.innerHTML = keys.map(k => {
+                const s = scores[k];
+                return `<div class="best-score-row">
+                    <span class="bs-topic">${k}</span>
+                    <span class="bs-detail">${s.percentage}% &bull; ${formatTime(s.seconds)} &bull; ${s.date}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function clearBestScores() {
+            if (confirm('Clear all saved best scores on this device?')) {
+                try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+                renderBestScores();
+            }
+        }
 
         // Wire up the choice buttons and initialize the pool note
         function initSelectors() {
@@ -554,6 +712,7 @@
             document.getElementById('resultsScreen').classList.remove('show');
             document.getElementById('remainingCount').textContent = TOTAL_QUESTIONS;
 
+            startTimer();
             updateScoreDisplay();
             showQuestion();
         }
@@ -647,6 +806,7 @@
         }
 
         function showResults() {
+            const totalSeconds = stopTimer();
             document.getElementById('quizScreen').classList.remove('show');
             document.getElementById('resultsScreen').classList.add('show');
 
@@ -665,6 +825,24 @@
             const needed = Math.ceil((PASSING_PERCENTAGE / 100) * TOTAL_QUESTIONS);
             document.getElementById('passingInfo').textContent =
                 `Passing score: ${PASSING_PERCENTAGE}% (${needed} out of ${TOTAL_QUESTIONS} correct)`;
+
+            // Show total time taken
+            const avg = TOTAL_QUESTIONS > 0 ? Math.round(totalSeconds / TOTAL_QUESTIONS) : 0;
+            document.getElementById('timeTaken').textContent =
+                `Time: ${formatTime(totalSeconds)} (avg ${avg}s per question)`;
+
+            // Save best score for this topic on the device
+            const topicKey = selectedTopic === 'all' ? 'All topics' : selectedTopic;
+            const isNewBest = recordScore(topicKey, percentage, totalSeconds, TOTAL_QUESTIONS);
+            const badge = document.getElementById('bestBadge');
+            const best = loadBestScores()[topicKey];
+            if (isNewBest) {
+                badge.textContent = `\u2b50 New best for ${topicKey}!`;
+            } else if (best) {
+                badge.textContent = `Your best for ${topicKey}: ${best.percentage}% (${formatTime(best.seconds)})`;
+            } else {
+                badge.textContent = '';
+            }
 
             // Reset review filter to "All" and render the review list
             setReviewFilter('all');
@@ -715,10 +893,12 @@
         function restartQuiz() {
             document.getElementById('resultsScreen').classList.remove('show');
             document.getElementById('startScreen').style.display = 'block';
+            renderBestScores();
         }
 
         // Initialize the topic/length selectors on page load
         initSelectors();
+        renderBestScores();
     </script>
 </body>
 </html>
