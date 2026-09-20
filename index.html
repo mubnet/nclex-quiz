@@ -226,6 +226,30 @@
 
         .review-section { margin-top: 30px; text-align: left; }
         .review-section h3 { margin-bottom: 15px; color: #1a5276; font-size: 1.3em; }
+        .review-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .review-header h3 { margin-bottom: 0; }
+        .review-toggle { display: flex; gap: 8px; }
+        .review-toggle-btn {
+            padding: 8px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+            color: #333;
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-weight: 500;
+        }
+        .review-toggle-btn:hover { border-color: #2980b9; background: #f4f9fd; }
+        .review-toggle-btn.selected { border-color: #2980b9; background: #2980b9; color: #fff; }
+        .review-empty { display: none; color: #27ae60; font-weight: 500; padding: 10px 0; }
         .review-item {
             background: white;
             border-radius: 8px;
@@ -410,8 +434,15 @@
             </div>
 
             <div class="review-section" id="reviewSection">
-                <h3>Question Review</h3>
+                <div class="review-header">
+                    <h3>Question Review</h3>
+                    <div class="review-toggle" id="reviewToggle">
+                        <button type="button" class="review-toggle-btn selected" data-filter="all" onclick="setReviewFilter('all')">All</button>
+                        <button type="button" class="review-toggle-btn" data-filter="incorrect" onclick="setReviewFilter('incorrect')">Incorrect only</button>
+                    </div>
+                </div>
                 <div id="reviewContainer"></div>
+                <div class="review-empty" id="reviewEmpty">No incorrect answers &mdash; perfect score on these questions!</div>
             </div>
         </div>
     </div>
@@ -424,6 +455,7 @@
         // User selections (defaults match the pre-selected buttons)
         let selectedTopic = 'all';
         let selectedLength = 25;
+        let reviewFilter = 'all';
 
         // Wire up the choice buttons and initialize the pool note
         function initSelectors() {
@@ -634,9 +666,28 @@
             document.getElementById('passingInfo').textContent =
                 `Passing score: ${PASSING_PERCENTAGE}% (${needed} out of ${TOTAL_QUESTIONS} correct)`;
 
+            // Reset review filter to "All" and render the review list
+            setReviewFilter('all');
+
+            document.getElementById('progressBar').style.width = '100%';
+        }
+
+        // Render the review list, honoring the current filter (all / incorrect)
+        function renderReview() {
             const reviewContainer = document.getElementById('reviewContainer');
+            const emptyMsg = document.getElementById('reviewEmpty');
             reviewContainer.innerHTML = '';
-            quizResults.forEach((result, index) => {
+
+            const items = reviewFilter === 'incorrect'
+                ? quizResults.filter(r => !r.correct)
+                : quizResults;
+
+            // Show a friendly message if "Incorrect only" is selected but there are none
+            emptyMsg.style.display = (reviewFilter === 'incorrect' && items.length === 0) ? 'block' : 'none';
+
+            items.forEach((result) => {
+                // Use the question's original position in the full result set for numbering
+                const index = quizResults.indexOf(result);
                 const div = document.createElement('div');
                 div.className = `review-item ${result.correct ? 'review-correct' : 'review-incorrect'}`;
                 let html = `<div class="review-q">${index + 1}. ${result.correct ? '&#10004;' : '&#10008;'} [${result.topic}] ${result.question}</div>`;
@@ -650,8 +701,15 @@
                 div.innerHTML = html;
                 reviewContainer.appendChild(div);
             });
+        }
 
-            document.getElementById('progressBar').style.width = '100%';
+        // Switch the review filter and re-render
+        function setReviewFilter(filter) {
+            reviewFilter = filter;
+            document.querySelectorAll('#reviewToggle .review-toggle-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.filter === filter);
+            });
+            renderReview();
         }
 
         function restartQuiz() {
