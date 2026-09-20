@@ -267,6 +267,36 @@
         }
         .start-btn:hover { background: #1e8449; }
 
+        /* Topic / length selectors */
+        .options-group { margin: 22px 0; text-align: left; }
+        .option-label {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #1a5276;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .choice-row { display: flex; flex-wrap: wrap; gap: 10px; }
+        .choice-btn {
+            padding: 10px 18px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+            color: #333;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-weight: 500;
+        }
+        .choice-btn:hover { border-color: #2980b9; background: #f4f9fd; }
+        .choice-btn.selected {
+            border-color: #2980b9;
+            background: #2980b9;
+            color: #fff;
+        }
+        .pool-note { font-size: 0.82em; color: #888; margin-top: 10px; }
+
         .quiz-screen { display: none; }
         .quiz-screen.show { display: block; }
 
@@ -300,6 +330,28 @@
                     <li><strong>Passing score: 75%</strong></li>
                     <li>Questions and answer choices shuffled each attempt</li>
                 </ul>
+
+                <div class="options-group">
+                    <div class="option-label">Choose a topic</div>
+                    <div class="choice-row" id="topicChoices">
+                        <button type="button" class="choice-btn selected" data-topic="all">All topics</button>
+                        <button type="button" class="choice-btn" data-topic="Human Development">Human Development</button>
+                        <button type="button" class="choice-btn" data-topic="Mobility">Mobility</button>
+                        <button type="button" class="choice-btn" data-topic="Thermoregulation">Thermoregulation</button>
+                    </div>
+                </div>
+
+                <div class="options-group">
+                    <div class="option-label">Number of questions</div>
+                    <div class="choice-row" id="lengthChoices">
+                        <button type="button" class="choice-btn" data-length="10">10</button>
+                        <button type="button" class="choice-btn selected" data-length="25">25</button>
+                        <button type="button" class="choice-btn" data-length="50">50</button>
+                        <button type="button" class="choice-btn" data-length="all">All</button>
+                    </div>
+                    <div class="pool-note" id="poolNote"></div>
+                </div>
+
                 <button class="start-btn" onclick="startQuiz()">Start Quiz</button>
             </div>
         </div>
@@ -369,6 +421,49 @@
         const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
         const PASSING_PERCENTAGE = 75;
 
+        // User selections (defaults match the pre-selected buttons)
+        let selectedTopic = 'all';
+        let selectedLength = 25;
+
+        // Wire up the choice buttons and initialize the pool note
+        function initSelectors() {
+            document.querySelectorAll('#topicChoices .choice-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('#topicChoices .choice-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedTopic = btn.dataset.topic;
+                    updatePoolNote();
+                });
+            });
+            document.querySelectorAll('#lengthChoices .choice-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('#lengthChoices .choice-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedLength = btn.dataset.length === 'all' ? 'all' : parseInt(btn.dataset.length, 10);
+                    updatePoolNote();
+                });
+            });
+            updatePoolNote();
+        }
+
+        // How many questions are available for the current topic
+        function poolCount() {
+            return selectedTopic === 'all'
+                ? QUESTION_BANK.length
+                : QUESTION_BANK.filter(q => q.topic === selectedTopic).length;
+        }
+
+        // Show the user how many questions this quiz will contain
+        function updatePoolNote() {
+            const pool = poolCount();
+            const asked = selectedLength === 'all' ? pool : Math.min(selectedLength, pool);
+            const topicLabel = selectedTopic === 'all' ? 'all topics' : selectedTopic;
+            const note = document.getElementById('poolNote');
+            if (note) {
+                note.textContent = `This quiz will have ${asked} question${asked === 1 ? '' : 's'} from ${topicLabel} (${pool} available).`;
+            }
+        }
+
         let currentQuestions = [];
         let currentQuestionIndex = 0;
         let correctAnswers = 0;
@@ -401,7 +496,16 @@
         }
 
         function generateQuestions() {
-            return shuffle(QUESTION_BANK).map(prepareQuestion);
+            // Filter by selected topic
+            const pool = selectedTopic === 'all'
+                ? QUESTION_BANK
+                : QUESTION_BANK.filter(q => q.topic === selectedTopic);
+            // Shuffle, then slice to the requested length
+            const shuffled = shuffle(pool);
+            const count = selectedLength === 'all'
+                ? shuffled.length
+                : Math.min(selectedLength, shuffled.length);
+            return shuffled.slice(0, count).map(prepareQuestion);
         }
 
         function startQuiz() {
@@ -554,6 +658,9 @@
             document.getElementById('resultsScreen').classList.remove('show');
             document.getElementById('startScreen').style.display = 'block';
         }
+
+        // Initialize the topic/length selectors on page load
+        initSelectors();
     </script>
 </body>
 </html>
